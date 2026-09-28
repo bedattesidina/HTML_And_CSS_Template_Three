@@ -1,5 +1,5 @@
 /* Service worker: يخزّن ملفات التطبيق ليعمل بدون إنترنت. */
-var CACHE = "money-manager-v2";
+var CACHE = "money-manager-v3";
 var ASSETS = [
   "./",
   "index.html",

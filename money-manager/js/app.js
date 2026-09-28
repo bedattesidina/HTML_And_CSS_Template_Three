@@ -678,6 +678,39 @@ function openSheet(title, build) {
   $("#sheet-backdrop").hidden = false;
   document.body.style.overflow = "hidden";
 }
+/* تأكيد داخل الصفحة: نافذة confirm() قد تكون معطّلة في بعض البيئات المضمّنة. */
+function askConfirm(message, onYes, confirmLabel) {
+  var backdrop = el("div", "confirm-backdrop");
+  var box = el("div", "confirm-box");
+  box.setAttribute("role", "dialog");
+  box.setAttribute("aria-modal", "true");
+  box.appendChild(el("p", "confirm-text", message));
+  var actions = el("div", "sheet-actions");
+  var yesBtn = el("button", "btn danger", confirmLabel || "تأكيد");
+  yesBtn.type = "button";
+  var noBtn = el("button", "btn ghost", "إلغاء");
+  noBtn.type = "button";
+  function close() {
+    backdrop.remove();
+    document.removeEventListener("keydown", onKey);
+  }
+  function onKey(event) {
+    if (event.key === "Escape") close();
+  }
+  yesBtn.addEventListener("click", function () { close(); onYes(); });
+  noBtn.addEventListener("click", close);
+  backdrop.addEventListener("click", function (event) {
+    if (event.target === backdrop) close();
+  });
+  document.addEventListener("keydown", onKey);
+  actions.appendChild(yesBtn);
+  actions.appendChild(noBtn);
+  box.appendChild(actions);
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+  yesBtn.focus();
+}
+
 function closeSheet() {
   $("#sheet-backdrop").hidden = true;
   $("#sheet-body").innerHTML = "";
@@ -803,12 +836,13 @@ function openTxSheet(existing) {
         var delBtn = el("button", "btn danger", "حذف");
         delBtn.type = "button";
         delBtn.addEventListener("click", function () {
-          if (!confirm("حذف هذه العملية؟")) return;
-          state.transactions = state.transactions.filter(function (tx) { return tx.id !== existing.id; });
-          save();
-          closeSheet();
-          render();
-          toast("تم الحذف");
+          askConfirm("حذف هذه العملية؟", function () {
+            state.transactions = state.transactions.filter(function (tx) { return tx.id !== existing.id; });
+            save();
+            closeSheet();
+            render();
+            toast("تم الحذف");
+          }, "حذف");
         });
         actions.appendChild(delBtn);
       }
@@ -1229,12 +1263,13 @@ function openRecurringEditor(rule) {
         var delBtn = el("button", "btn danger", "حذف القاعدة");
         delBtn.type = "button";
         delBtn.addEventListener("click", function () {
-          if (!confirm("حذف هذه القاعدة؟ العمليات المسجّلة سابقًا تبقى كما هي.")) return;
-          state.recurring = state.recurring.filter(function (item) { return item.id !== draft.id; });
-          save();
-          closeSheet();
-          render();
-          toast("تم الحذف");
+          askConfirm("حذف هذه القاعدة؟ العمليات المسجّلة سابقًا تبقى كما هي.", function () {
+            state.recurring = state.recurring.filter(function (item) { return item.id !== draft.id; });
+            save();
+            closeSheet();
+            render();
+            toast("تم الحذف");
+          }, "حذف");
         });
         actions.appendChild(delBtn);
       }
@@ -1321,6 +1356,77 @@ function downloadBlob(blob, filename) {
   setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
 }
 
+function backupText() {
+  return JSON.stringify(state, null, 2);
+}
+
+function copyBackup() {
+  var text = backupText();
+  function fallback() {
+    openSheet("نسخة احتياطية", function (body) {
+      body.appendChild(el("p", "muted", "انسخ النص كاملًا واحفظه في مكان آمن."));
+      var area = el("textarea", "field backup-area");
+      area.value = text;
+      area.readOnly = true;
+      body.appendChild(area);
+      area.focus();
+      area.select();
+    });
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () {
+      toast("نُسخت النسخة الاحتياطية ✓");
+    }, fallback);
+  } else {
+    fallback();
+  }
+}
+
+function pasteBackup() {
+  openSheet("لصق نسخة احتياطية", function (body) {
+    body.appendChild(el("p", "muted", "الصق هنا محتوى نسخة JSON سبق أن نسختها أو صدّرتها."));
+    var area = el("textarea", "field backup-area");
+    area.placeholder = '{ "accounts": [...], "transactions": [...] }';
+    body.appendChild(area);
+    var actions = el("div", "sheet-actions");
+    var okBtn = el("button", "btn", "استيراد");
+    okBtn.type = "button";
+    okBtn.addEventListener("click", function () { applyBackup(area.value); });
+    actions.appendChild(okBtn);
+    body.appendChild(actions);
+    area.focus();
+  });
+}
+
+function applyBackup(raw) {
+  var data;
+  try {
+    data = JSON.parse(raw);
+  } catch (err) {
+    return toast("النص ليس JSON صالحًا", "critical");
+  }
+  if (!data || !Array.isArray(data.accounts) || !Array.isArray(data.transactions)) {
+    return toast("النسخة غير صالحة", "critical");
+  }
+  askConfirm("سيتم استبدال البيانات الحالية بمحتوى النسخة. متابعة؟", function () {
+    state = {
+      version: 1,
+      settings: Object.assign({ currency: "MRU", theme: "auto", startDay: 1 }, data.settings || {}),
+      accounts: data.accounts,
+      categories: data.categories || [],
+      budgets: data.budgets || {},
+      recurring: data.recurring || [],
+      transactions: data.transactions
+    };
+    save();
+    applyTheme();
+    closeSheet();
+    ui.period = periodStartOf(new Date());
+    render();
+    toast("تم الاستيراد ✓");
+  }, "استبدال");
+}
+
 function importJson(file) {
   var reader = new FileReader();
   reader.onload = function () {
@@ -1329,21 +1435,23 @@ function importJson(file) {
       if (!data || !Array.isArray(data.accounts) || !Array.isArray(data.transactions)) {
         return toast("الملف غير صالح", "critical");
       }
-      if (!confirm("سيتم استبدال البيانات الحالية بمحتوى الملف. متابعة؟")) return;
-      state = {
-        version: 1,
-        settings: Object.assign({ currency: "MRU", theme: "auto", startDay: 1 }, data.settings || {}),
-        accounts: data.accounts,
-        categories: data.categories || [],
-        budgets: data.budgets || {},
-        recurring: data.recurring || [],
-        transactions: data.transactions
-      };
-      save();
-      applyTheme();
-      ui.period = periodStartOf(new Date());
-      render();
-      toast("تم الاستيراد ✓");
+      askConfirm("سيتم استبدال البيانات الحالية بمحتوى النسخة. متابعة؟", function () {
+        state = {
+          version: 1,
+          settings: Object.assign({ currency: "MRU", theme: "auto", startDay: 1 }, data.settings || {}),
+          accounts: data.accounts,
+          categories: data.categories || [],
+          budgets: data.budgets || {},
+          recurring: data.recurring || [],
+          transactions: data.transactions
+        };
+        save();
+        applyTheme();
+        closeSheet();
+        ui.period = periodStartOf(new Date());
+        render();
+        toast("تم الاستيراد ✓");
+      }, "استبدال");
     } catch (err) {
       toast("تعذّرت قراءة الملف", "critical");
     }
@@ -1438,19 +1546,21 @@ function wire() {
   $("#export-btn").addEventListener("click", exportJson);
   $("#csv-btn").addEventListener("click", exportCsv);
   $("#import-btn").addEventListener("click", function () { $("#import-file").click(); });
+  $("#copy-btn").addEventListener("click", copyBackup);
+  $("#paste-btn").addEventListener("click", pasteBackup);
   $("#import-file").addEventListener("change", function (event) {
     if (event.target.files && event.target.files[0]) importJson(event.target.files[0]);
     event.target.value = "";
   });
   $("#wipe-btn").addEventListener("click", function () {
-    if (!confirm("سيتم حذف كل الحسابات والعمليات نهائيًا. متابعة؟")) return;
-    if (!confirm("تأكيد أخير: هل حفظت نسخة احتياطية؟")) return;
-    state = seed();
-    save();
-    applyTheme();
-    ui.period = periodStartOf(new Date());
-    render();
-    toast("تم حذف البيانات");
+    askConfirm("سيتم حذف كل الحسابات والعمليات نهائيًا. هل حفظت نسخة احتياطية؟", function () {
+      state = seed();
+      save();
+      applyTheme();
+      ui.period = periodStartOf(new Date());
+      render();
+      toast("تم حذف البيانات");
+    }, "حذف كل شيء");
   });
 }
 
@@ -1481,6 +1591,8 @@ function wireInstall() {
 /* End PWA */
 
 function init() {
+  document.documentElement.setAttribute("dir", "rtl");
+  document.documentElement.setAttribute("lang", "ar");
   load();
   applyTheme();
   ui.period = periodStartOf(new Date());

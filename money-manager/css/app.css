@@ -754,6 +754,37 @@ main {
 }
 /* End Sheet */
 
+/* Start Confirm Dialog */
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background-color: rgba(11, 11, 11, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.confirm-box {
+  background-color: var(--surface-1);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 18px;
+  width: min(360px, 100%);
+}
+.confirm-text {
+  margin: 0 0 14px;
+  font-size: 15px;
+}
+.backup-area {
+  min-height: 160px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 12px;
+  direction: ltr;
+  text-align: left;
+}
+/* End Confirm Dialog */
+
 /* Start Toasts */
 .toast-wrap {
   position: fixed;
