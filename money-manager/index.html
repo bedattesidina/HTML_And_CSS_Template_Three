@@ -54,6 +54,13 @@
         </div>
         <div class="card">
           <div class="card-head">
+            <h2 class="card-title">مصاريف آخر 6 أشهر</h2>
+            <button class="link-btn" type="button" id="toggle-trend">جدول</button>
+          </div>
+          <div id="home-trend"></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
             <h2 class="card-title">آخر العمليات</h2>
             <button class="link-btn" type="button" data-go="tx">الكل</button>
           </div>
@@ -73,6 +80,10 @@
             <option value="income">مدخول</option>
             <option value="transfer">تحويل</option>
           </select>
+          <label class="check">
+            <input type="checkbox" id="tx-all-months" />
+            <span>البحث في كل الأشهر</span>
+          </label>
         </div>
         <div id="tx-list"></div>
       </section>
@@ -106,6 +117,7 @@
         <div id="budgets-list"></div>
         <div class="row-actions">
           <button class="btn ghost" type="button" id="manage-categories">إدارة الفئات</button>
+          <button class="btn ghost" type="button" id="manage-recurring">العمليات الثابتة</button>
         </div>
       </section>
       <!-- End Budgets -->

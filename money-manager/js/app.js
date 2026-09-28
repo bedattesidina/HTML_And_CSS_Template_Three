@@ -146,6 +146,7 @@ function seed() {
     accounts: accounts,
     categories: categories,
     budgets: {},
+    recurring: [],
     transactions: []
   };
 }
@@ -164,6 +165,7 @@ function load() {
       accounts: data.accounts || [],
       categories: data.categories || [],
       budgets: data.budgets || {},
+      recurring: data.recurring || [],
       transactions: data.transactions || []
     };
   } catch (err) {
@@ -235,8 +237,70 @@ function budgetStatus(spent, budget) {
 }
 /* End Selectors */
 
+/* Start Recurring
+   العمليات الثابتة (إيجار، فواتير، راتب…) تُولَّد تلقائيًا في يومها من كل شهر،
+   بأثر رجعي حتى 12 شهرًا، ودون تكرار لنفس اليوم. */
+function daysInMonth(year, month) {
+  return new Date(year, month + 1, 0).getDate();
+}
+function dueDatesOf(rule, today) {
+  var dates = [];
+  var startIso = rule.startDate || todayIso();
+  var cursor = dateOf(startIso);
+  var oldest = new Date(today.getFullYear(), today.getMonth() - 11, 1);
+  if (cursor < oldest) cursor = oldest;
+  var year = cursor.getFullYear();
+  var month = cursor.getMonth();
+  for (var step = 0; step < 24; step++) {
+    var day = Math.min(rule.dayOfMonth || 1, daysInMonth(year, month));
+    var iso = isoOf(new Date(year, month, day));
+    if (iso >= startIso && iso <= isoOf(today)) dates.push(iso);
+    month += 1;
+    if (month > 11) { month = 0; year += 1; }
+    if (new Date(year, month, 1) > today) break;
+  }
+  return dates;
+}
+function postDueRecurring() {
+  if (!Array.isArray(state.recurring) || !state.recurring.length) return 0;
+  var today = new Date();
+  var added = 0;
+  state.recurring.forEach(function (rule) {
+    if (rule.active === false) return;
+    if (!accountById(rule.accountId) || !categoryById(rule.categoryId)) return;
+    dueDatesOf(rule, today).forEach(function (iso) {
+      var exists = state.transactions.some(function (tx) {
+        return tx.recurringId === rule.id && tx.date === iso;
+      });
+      if (exists) return;
+      state.transactions.push({
+        id: uid(),
+        recurringId: rule.id,
+        type: rule.type,
+        amount: rule.amount,
+        accountId: rule.accountId,
+        toAccountId: null,
+        categoryId: rule.categoryId,
+        note: rule.note || "",
+        date: iso,
+        createdAt: Date.now()
+      });
+      added += 1;
+    });
+  });
+  if (added) save();
+  return added;
+}
+/* End Recurring */
+
 /* Start UI Shell */
-var ui = { view: "home", period: null, showTable: false, filters: { q: "", account: "all", kind: "all" } };
+var ui = {
+  view: "home",
+  period: null,
+  showTable: false,
+  showTrendTable: false,
+  filters: { q: "", account: "all", kind: "all", allMonths: false }
+};
 
 function toast(message, tone) {
   var wrap = $("#toasts");
@@ -364,6 +428,47 @@ function renderBreakdown() {
     "</div>";
 }
 
+/* أعمدة زمنية بسلسلة واحدة: مصاريف آخر ستة أشهر، مع تسمية مباشرة انتقائية. */
+function renderTrend() {
+  var periods = [];
+  for (var back = 5; back >= 0; back--) {
+    var start = shiftPeriod(ui.period, -back);
+    periods.push({ start: start, label: MONTHS_AR[start.getMonth()], value: periodTotals(start).expense });
+  }
+  var host = $("#home-trend");
+  var max = periods.reduce(function (top, row) { return Math.max(top, row.value); }, 0);
+  $("#toggle-trend").textContent = ui.showTrendTable ? "رسم" : "جدول";
+  if (!max) {
+    host.innerHTML = '<p class="empty">لا توجد مصاريف مسجّلة في هذه الأشهر.</p>';
+    return;
+  }
+  if (ui.showTrendTable) {
+    host.innerHTML =
+      '<table class="data-table"><thead><tr><th>الشهر</th><th class="n">المصاريف</th></tr></thead><tbody>' +
+      periods.slice().reverse().map(function (row) {
+        return "<tr><td>" + esc(row.label) + " " + row.start.getFullYear() +
+          '</td><td class="n">' + esc(rawNum(row.value)) + "</td></tr>";
+      }).join("") +
+      "</tbody></table>";
+    return;
+  }
+  host.innerHTML =
+    '<div class="trend">' +
+    periods.map(function (row, index) {
+      var isLast = index === periods.length - 1;
+      var isMax = row.value === max;
+      var height = Math.max(2, Math.round((row.value / max) * 100));
+      return (
+        '<div class="trend-col" title="' + esc(row.label + " " + row.start.getFullYear() + ": " + rawNum(row.value)) + '">' +
+        '<span class="trend-val" dir="ltr">' + (isLast || isMax ? esc(rawNum(row.value)) : "") + "</span>" +
+        '<div class="trend-plot"><div class="trend-bar' + (isLast ? " is-current" : "") +
+        '" style="height:' + height + '%"></div></div>' +
+        '<span class="trend-label">' + esc(row.label) + "</span></div>"
+      );
+    }).join("") +
+    "</div>";
+}
+
 function renderRecent() {
   var rows = periodTransactions(ui.period).slice().sort(function (a, b) {
     return a.date === b.date ? b.createdAt - a.createdAt : (a.date < b.date ? 1 : -1);
@@ -382,6 +487,7 @@ function renderHome() {
   renderAlerts();
   renderHomeAccounts();
   renderBreakdown();
+  renderTrend();
   renderRecent();
 }
 /* End Render: Home */
@@ -421,7 +527,8 @@ function txRow(tx) {
 function renderTx() {
   var filters = ui.filters;
   var query = filters.q.trim();
-  var rows = periodTransactions(ui.period).filter(function (tx) {
+  var source = filters.allMonths ? state.transactions : periodTransactions(ui.period);
+  var rows = source.filter(function (tx) {
     if (filters.kind !== "all" && tx.type !== filters.kind) return false;
     if (filters.account !== "all" && tx.accountId !== filters.account && tx.toAccountId !== filters.account) return false;
     if (query) {
@@ -471,6 +578,7 @@ function fillTxFilters() {
   select.value = ui.filters.account;
   $("#tx-kind").value = ui.filters.kind;
   $("#tx-search").value = ui.filters.q;
+  $("#tx-all-months").checked = ui.filters.allMonths;
 }
 /* End Render: Transactions */
 
@@ -966,6 +1074,176 @@ function openCategoryEditor(category) {
   });
 }
 
+function recurringSummary(rule) {
+  var category = categoryById(rule.categoryId);
+  var account = accountById(rule.accountId);
+  return (rule.type === "income" ? "مدخول" : "مصروف") + " · " + (category ? category.name : "؟") +
+    " · " + (account ? account.name : "؟") + " · يوم " + (rule.dayOfMonth || 1);
+}
+
+function openRecurringSheet() {
+  openSheet("العمليات الثابتة", function (body) {
+    body.appendChild(el("p", "muted", "تُسجَّل تلقائيًا كل شهر في يومها المحدد (إيجار، فواتير، راتب…)."));
+    var rules = state.recurring || [];
+    if (!rules.length) {
+      body.appendChild(el("p", "empty", "لا توجد عمليات ثابتة بعد."));
+    }
+    rules.forEach(function (rule) {
+      var row = el("button", "acc-row");
+      row.type = "button";
+      row.innerHTML =
+        '<span class="ic">' + (rule.active === false ? "⏸️" : "🔁") + "</span>" +
+        '<span class="grow">' + esc(rule.note || (categoryById(rule.categoryId) || {}).name || "عملية ثابتة") +
+        '<span class="sub">' + esc(recurringSummary(rule)) + "</span></span>" +
+        '<span class="big-num" dir="ltr">' + esc(fmt(rule.amount)) + "</span>";
+      row.addEventListener("click", function () { openRecurringEditor(rule); });
+      body.appendChild(row);
+    });
+    var addBtn = el("button", "btn", "+ عملية ثابتة");
+    addBtn.type = "button";
+    addBtn.addEventListener("click", function () {
+      openRecurringEditor({
+        id: null, type: "expense", amount: 0,
+        accountId: state.accounts.length ? state.accounts[0].id : null,
+        categoryId: null, note: "", dayOfMonth: 1, startDate: todayIso(), active: true
+      });
+    });
+    body.appendChild(addBtn);
+  });
+}
+
+function openRecurringEditor(rule) {
+  var draft = JSON.parse(JSON.stringify(rule));
+  var isNew = !draft.id;
+
+  openSheet(isNew ? "عملية ثابتة جديدة" : "تعديل العملية الثابتة", function (body) {
+    function redraw() {
+      body.innerHTML = "";
+
+      var seg = el("div", "seg");
+      [["expense", "مصروف"], ["income", "مدخول"]].forEach(function (pair) {
+        var button = el("button", draft.type === pair[0] ? "is-on" : null, pair[1]);
+        button.type = "button";
+        button.addEventListener("click", function () {
+          draft.type = pair[0];
+          draft.categoryId = null;
+          redraw();
+        });
+        seg.appendChild(button);
+      });
+      body.appendChild(seg);
+
+      var amountInput = el("input", "field amount-display");
+      amountInput.inputMode = "decimal";
+      amountInput.value = draft.amount ? String(fromMinor(draft.amount)) : "";
+      amountInput.placeholder = "0";
+      amountInput.setAttribute("aria-label", "المبلغ");
+      body.appendChild(amountInput);
+      body.appendChild(el("div", "amount-unit", state.settings.currency + " / شهريًا"));
+
+      var chips = el("div", "chips");
+      categoriesOf(draft.type).forEach(function (category) {
+        var chip = el("button", "chip" + (draft.categoryId === category.id ? " is-on" : ""),
+          category.icon + " " + category.name);
+        chip.type = "button";
+        chip.addEventListener("click", function () {
+          draft.categoryId = category.id;
+          draft.amount = toMinor(amountInput.value);
+          draft.note = noteInput.value;
+          redraw();
+        });
+        chips.appendChild(chip);
+      });
+      var catWrap = el("div", "form-row");
+      catWrap.appendChild(el("span", null, "الفئة"));
+      catWrap.appendChild(chips);
+      body.appendChild(catWrap);
+
+      body.appendChild(selectRow("الحساب", state.accounts, draft.accountId, function (value) {
+        draft.accountId = value;
+      }));
+
+      var dayWrap = el("div", "form-row");
+      dayWrap.appendChild(el("span", null, "يوم الشهر"));
+      var daySelect = el("select", "field");
+      var options = "";
+      for (var day = 1; day <= 28; day++) options += '<option value="' + day + '">' + day + "</option>";
+      daySelect.innerHTML = options;
+      daySelect.value = String(draft.dayOfMonth || 1);
+      daySelect.addEventListener("change", function () { draft.dayOfMonth = Number(daySelect.value); });
+      dayWrap.appendChild(daySelect);
+      body.appendChild(dayWrap);
+
+      var startWrap = el("div", "form-row");
+      startWrap.appendChild(el("span", null, "تبدأ من"));
+      var startInput = el("input", "field");
+      startInput.type = "date";
+      startInput.value = draft.startDate || todayIso();
+      startWrap.appendChild(startInput);
+      body.appendChild(startWrap);
+
+      var noteWrap = el("div", "form-row");
+      noteWrap.appendChild(el("span", null, "ملاحظة (اختياري)"));
+      var noteInput = el("input", "field");
+      noteInput.value = draft.note || "";
+      noteWrap.appendChild(noteInput);
+      body.appendChild(noteWrap);
+
+      var activeWrap = el("label", "setting");
+      activeWrap.appendChild(el("span", null, "مفعّلة"));
+      var activeInput = el("input");
+      activeInput.type = "checkbox";
+      activeInput.checked = draft.active !== false;
+      activeWrap.appendChild(activeInput);
+      body.appendChild(activeWrap);
+
+      var actions = el("div", "sheet-actions");
+      var saveBtn = el("button", "btn", "حفظ");
+      saveBtn.type = "button";
+      saveBtn.addEventListener("click", function () {
+        draft.amount = toMinor(amountInput.value);
+        draft.note = noteInput.value.trim();
+        draft.dayOfMonth = Number(daySelect.value) || 1;
+        draft.startDate = startInput.value || todayIso();
+        draft.active = activeInput.checked;
+        if (draft.amount <= 0) return toast("أدخل مبلغًا أكبر من صفر", "warning");
+        if (!draft.categoryId) return toast("اختر الفئة", "warning");
+        if (!draft.accountId) return toast("اختر الحساب", "warning");
+        if (isNew) {
+          draft.id = uid();
+          state.recurring.push(draft);
+        } else {
+          state.recurring = state.recurring.map(function (item) {
+            return item.id === draft.id ? draft : item;
+          });
+        }
+        save();
+        var added = postDueRecurring();
+        closeSheet();
+        render();
+        toast(added ? "تم الحفظ ✓ وسُجّلت " + added + " عملية مستحقة" : "تم الحفظ ✓");
+      });
+      actions.appendChild(saveBtn);
+
+      if (!isNew) {
+        var delBtn = el("button", "btn danger", "حذف القاعدة");
+        delBtn.type = "button";
+        delBtn.addEventListener("click", function () {
+          if (!confirm("حذف هذه القاعدة؟ العمليات المسجّلة سابقًا تبقى كما هي.")) return;
+          state.recurring = state.recurring.filter(function (item) { return item.id !== draft.id; });
+          save();
+          closeSheet();
+          render();
+          toast("تم الحذف");
+        });
+        actions.appendChild(delBtn);
+      }
+      body.appendChild(actions);
+    }
+    redraw();
+  });
+}
+
 function openMonthSheet() {
   openSheet("اختيار الشهر", function (body) {
     var input = el("input", "field");
@@ -1058,6 +1336,7 @@ function importJson(file) {
         accounts: data.accounts,
         categories: data.categories || [],
         budgets: data.budgets || {},
+        recurring: data.recurring || [],
         transactions: data.transactions
       };
       save();
@@ -1131,6 +1410,15 @@ function wire() {
     });
   });
   $("#manage-categories").addEventListener("click", openCategoriesSheet);
+  $("#manage-recurring").addEventListener("click", openRecurringSheet);
+  $("#toggle-trend").addEventListener("click", function () {
+    ui.showTrendTable = !ui.showTrendTable;
+    renderTrend();
+  });
+  $("#tx-all-months").addEventListener("change", function (event) {
+    ui.filters.allMonths = event.target.checked;
+    renderTx();
+  });
   $("#set-currency").addEventListener("change", function (event) {
     state.settings.currency = event.target.value.trim() || "MRU";
     save();
@@ -1196,9 +1484,11 @@ function init() {
   load();
   applyTheme();
   ui.period = periodStartOf(new Date());
+  var posted = postDueRecurring();
   wire();
   wireInstall();
   go("home");
+  if (posted) toast("سُجّلت " + posted + " عملية ثابتة مستحقة");
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () {
       navigator.serviceWorker.register("sw.js").catch(function () { /* التخزين للعمل دون إنترنت غير متاح */ });

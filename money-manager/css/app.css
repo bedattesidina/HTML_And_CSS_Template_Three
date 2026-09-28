@@ -373,6 +373,72 @@ main {
 }
 /* End Meters */
 
+/* Start Trend Columns */
+.trend {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 8px;
+  height: 150px;
+}
+.trend-col {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 4px;
+  min-width: 0;
+}
+.trend-val {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  min-height: 15px;
+}
+.trend-plot {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+}
+.trend-bar {
+  width: 100%;
+  background-color: var(--series-1);
+  border-radius: 4px 4px 0 0;
+  box-shadow: 0 0 0 2px var(--surface-1);
+}
+.trend-bar.is-current {
+  background-color: var(--brand-deep);
+}
+:root[data-theme="dark"] .trend-bar.is-current {
+  background-color: #86b6ef;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .trend-bar.is-current {
+    background-color: #86b6ef;
+  }
+}
+.trend-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.check {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand);
+}
+/* End Trend Columns */
+
 /* Start Accounts */
 .acc-strip {
   display: flex;
@@ -420,6 +486,7 @@ main {
   flex: 1;
 }
 .acc-row .sub {
+  display: block;
   font-size: 12px;
   color: var(--text-secondary);
 }
