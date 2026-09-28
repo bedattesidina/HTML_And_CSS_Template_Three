@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>مدير المال</title>
+    <meta name="description" content="تطبيق لتسجيل المصاريف والمداخيل، مع حسابات متعددة وميزانية شهرية لكل فئة. يعمل بدون إنترنت." />
+    <meta name="theme-color" content="#2a78d6" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="مدير المال" />
+    <link rel="stylesheet" href="css/app.css" />
+  </head>
+  <body>
+    <!-- Start Header -->
+    <header class="app-bar">
+      <div class="app-bar-row">
+        <h1 class="app-title">مدير المال</h1>
+        <button class="icon-btn" id="theme-btn" type="button" aria-label="تبديل المظهر">
+          <span id="theme-icon" aria-hidden="true">🌙</span>
+        </button>
+      </div>
+      <div class="month-nav" id="month-nav">
+        <button class="icon-btn" type="button" data-month-step="-1" aria-label="الشهر السابق">▶</button>
+        <button class="month-label" type="button" id="month-label" aria-label="اختيار الشهر"></button>
+        <button class="icon-btn" type="button" data-month-step="1" aria-label="الشهر التالي">◀</button>
+      </div>
+    </header>
+    <!-- End Header -->
+
+    <main id="main">
+      <!-- Start Home -->
+      <section class="view" id="view-home">
+        <div class="tiles" id="home-tiles"></div>
+        <div class="card" id="home-alerts-card" hidden>
+          <h2 class="card-title">تنبيهات الميزانية</h2>
+          <div id="home-alerts"></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <h2 class="card-title">الحسابات</h2>
+            <button class="link-btn" type="button" data-go="accounts">الكل</button>
+          </div>
+          <div class="acc-strip" id="home-accounts"></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <h2 class="card-title">المصاريف حسب الفئة</h2>
+            <button class="link-btn" type="button" id="toggle-table">جدول</button>
+          </div>
+          <div id="home-breakdown"></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <h2 class="card-title">مصاريف آخر 6 أشهر</h2>
+            <button class="link-btn" type="button" id="toggle-trend">جدول</button>
+          </div>
+          <div id="home-trend"></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <h2 class="card-title">آخر العمليات</h2>
+            <button class="link-btn" type="button" data-go="tx">الكل</button>
+          </div>
+          <div id="home-recent"></div>
+        </div>
+      </section>
+      <!-- End Home -->
+
+      <!-- Start Transactions -->
+      <section class="view" id="view-tx" hidden>
+        <div class="filters">
+          <input class="field" type="search" id="tx-search" placeholder="بحث في الملاحظات…" />
+          <select class="field" id="tx-account"></select>
+          <select class="field" id="tx-kind">
+            <option value="all">كل الأنواع</option>
+            <option value="expense">مصروف</option>
+            <option value="income">مدخول</option>
+            <option value="transfer">تحويل</option>
+          </select>
+          <label class="check">
+            <input type="checkbox" id="tx-all-months" />
+            <span>البحث في كل الأشهر</span>
+          </label>
+        </div>
+        <div id="tx-list"></div>
+      </section>
+      <!-- End Transactions -->
+
+      <!-- Start Accounts -->
+      <section class="view" id="view-accounts" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h2 class="card-title">مجموع الأرصدة</h2>
+            <strong class="big-num" id="accounts-total"></strong>
+          </div>
+        </div>
+        <div id="accounts-list"></div>
+        <div class="row-actions">
+          <button class="btn" type="button" id="add-account">+ حساب جديد</button>
+          <button class="btn ghost" type="button" id="add-transfer">↔ تحويل بين الحسابات</button>
+        </div>
+      </section>
+      <!-- End Accounts -->
+
+      <!-- Start Budgets -->
+      <section class="view" id="view-budgets" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h2 class="card-title">ميزانية الشهر</h2>
+            <strong class="big-num" id="budget-total"></strong>
+          </div>
+          <div id="budget-overall"></div>
+        </div>
+        <div id="budgets-list"></div>
+        <div class="row-actions">
+          <button class="btn ghost" type="button" id="manage-categories">إدارة الفئات</button>
+          <button class="btn ghost" type="button" id="manage-recurring">العمليات الثابتة</button>
+        </div>
+      </section>
+      <!-- End Budgets -->
+
+      <!-- Start Settings -->
+      <section class="view" id="view-settings" hidden>
+        <div class="card">
+          <h2 class="card-title">الإعدادات</h2>
+          <label class="setting">
+            <span>رمز العملة</span>
+            <input class="field" id="set-currency" maxlength="8" />
+          </label>
+          <label class="setting">
+            <span>المظهر</span>
+            <select class="field" id="set-theme">
+              <option value="auto">حسب النظام</option>
+              <option value="light">فاتح</option>
+              <option value="dark">داكن</option>
+            </select>
+          </label>
+          <label class="setting">
+            <span>بداية الشهر المالي</span>
+            <select class="field" id="set-start-day"></select>
+          </label>
+        </div>
+        <div class="card">
+          <h2 class="card-title">النسخ الاحتياطي</h2>
+          <p class="muted">بياناتك محفوظة داخل هذا الجهاز فقط ولا تُرسل لأي خادم. احفظ نسخة من وقت لآخر. إن كان التنزيل غير متاح، استعمل «نسخ النسخة».</p>
+          <div class="row-actions">
+            <button class="btn" type="button" id="export-btn">تصدير نسخة (JSON)</button>
+            <button class="btn ghost" type="button" id="import-btn">استيراد نسخة</button>
+            <button class="btn ghost" type="button" id="csv-btn">تصدير CSV</button>
+            <button class="btn ghost" type="button" id="copy-btn">نسخ النسخة</button>
+            <button class="btn ghost" type="button" id="paste-btn">لصق نسخة</button>
+            <input type="file" id="import-file" accept="application/json,.json" hidden />
+          </div>
+        </div>
+        <div class="card">
+          <h2 class="card-title">التنصيب على الجوال</h2>
+          <p class="muted" id="install-hint">افتح الصفحة في المتصفح ثم اختر «إضافة إلى الشاشة الرئيسية».</p>
+          <div class="row-actions">
+            <button class="btn" type="button" id="install-btn" hidden>تنصيب التطبيق</button>
+          </div>
+        </div>
+        <div class="card danger-card">
+          <h2 class="card-title">منطقة الخطر</h2>
+          <div class="row-actions">
+            <button class="btn danger" type="button" id="wipe-btn">حذف كل البيانات</button>
+          </div>
+        </div>
+        <p class="muted center">مدير المال — إصدار <span id="app-version"></span></p>
+      </section>
+      <!-- End Settings -->
+    </main>
+
+    <button class="fab" type="button" id="fab" aria-label="إضافة عملية">+</button>
+
+    <!-- Start Bottom Nav -->
+    <nav class="tabbar" id="tabbar">
+      <button class="tab is-active" type="button" data-go="home"><span aria-hidden="true">🏠</span>الرئيسية</button>
+      <button class="tab" type="button" data-go="tx"><span aria-hidden="true">📄</span>العمليات</button>
+      <button class="tab" type="button" data-go="accounts"><span aria-hidden="true">👛</span>الحسابات</button>
+      <button class="tab" type="button" data-go="budgets"><span aria-hidden="true">🎯</span>الميزانية</button>
+      <button class="tab" type="button" data-go="settings"><span aria-hidden="true">⚙️</span>الإعدادات</button>
+    </nav>
+    <!-- End Bottom Nav -->
+
+    <div class="sheet-backdrop" id="sheet-backdrop" hidden>
+      <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+        <div class="sheet-head">
+          <h2 id="sheet-title">عملية جديدة</h2>
+          <button class="icon-btn" type="button" id="sheet-close" aria-label="إغلاق">✕</button>
+        </div>
+        <div class="sheet-body" id="sheet-body"></div>
+      </div>
+    </div>
+
+    <div class="toast-wrap" id="toasts" aria-live="polite"></div>
+
+    <script src="js/app.js"></script>
+  </body>
+</html>
