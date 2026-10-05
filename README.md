@@ -15,3 +15,12 @@ You Can Add This Add-ons To The Design
 - JavaScript Countdown => https://youtu.be/eFsiOTJrrE8
 - Animate Width On Scrolling => https://youtu.be/sbIoIKI9FOc
 - Increase Numbers On Scrolling => https://youtu.be/PLsUdgLnzgQ
+
+---
+
+## تطبيق أندرويد: محفظتي (دخل ومصاريف وديون)
+
+يحتوي هذا المستودع أيضًا على تطبيق أندرويد أصلي داخل مجلد
+[`android-wallet/`](android-wallet/) لمتابعة الدخل والمصاريف والديون بواجهة عربية.
+ملف الـAPK يُبنى تلقائيًا عبر GitHub Actions — التفاصيل في
+[android-wallet/README.md](android-wallet/README.md).
